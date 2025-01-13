@@ -1,18 +1,23 @@
 # Nanocrystals.
 
+# REQUIRES:
+# A folder named "RUN" to store configurations.
+# A folder named "Restart" to store the restart binary files.
+# An input file to start the simulation (default name: start.data)
+
 ################################################################################
 # Variables.
 ## MATH.
-variable sr_two         equal   $(2^(1/6.))     		                            # Parameter is used in cutoffs.
+variable sr_two         equal   $(2^(1/6.))     		                        # Parameter is used in cutoffs.
 variable kb             equal   0.001987204259
 
 ## NUMBER OF STEPS OF RUNS.
-variable tnvt		equal 	    500000				                                      # NVT run steps.
+variable tnvt		    equal 	500000				                            # NVT run steps.
 
 ## INFORMATION PRINTING PERIODS.
-variable thermodump     equal   1e3				                                      # Thermo info dump period.
-variable trajdump       equal   5000		    		                                  # Config info dump period.
-variable trestart       equal   100000		    		                                  # Restart configuration saving period.
+variable thermodump     equal   1e3				                                # Thermo info dump period.
+variable trajdump       equal   5000		    		                        # Config info dump period.
+variable trestart       equal   100000		    		                        # Restart configuration saving period.
 
 ## SIMULATION PARAMETERS
 variable sigPb          equal   3.29                                            # sigPb charge [Amstrong].
@@ -20,20 +25,21 @@ variable sigSe          equal   4.36                                            
 variable epsPb          equal   30.0*${kb}                                      # energy [Kelvin] [epsPb/kB].
 variable epsSe          equal   45.3*${kb}                                      # energy [Kelvin] [epsSe/kB].
 variable rcut           equal   10.0                                            # Cutoff [Amstrong].
-variable tstep          equal   2       			                                  # Integration time step [femtoseconds].
+variable tstep          equal   2       			                            # Integration time step [femtoseconds].
 
 ## THERMODYNAMIC PARAMETERS.
-variable mytemp         index 	300   # Temperature [Kelvin].
+variable mytemp         index 	300                                             # Temperature [Kelvin].
+variable mypress	    index   1.0                                             # Pressure [Atmospheres].
 variable Tdamping	    equal   100*${tstep}
-variable mypress	index 1.0
+variable Pdamping       equal   10000
 
 ## SEEDS
-variable seed		    index	11573				                                    # Seed for creation of velocities.
+variable seed		    index	11573				                            # Seed for creation of velocities.
 
 ## STRINGS
 variable fname 		    string 	start.data
-variable thermofile     string  thermo.dat							                        # Name of the file with thermodynamic infos for npt equilibration phase.
-variable simname 	    string 	NanoCrys_${mytemp}				                			# Name of this simulation.
+variable thermofile     string  thermo.dat							            # Name of the file with thermodynamic infos for npt equilibration phase.
+variable simname 	    string 	NanoCrys_${mytemp}				                # Name of this simulation.
 
 ################################################################################
 # Initialization
@@ -47,14 +53,14 @@ read_data       	    ${fname}
 reset_timestep          0
 
 ## Masses
-mass			1 207.2
+mass			        1 207.2
 mass                    2 78.96
 
 ## Groups
 group                   Pb type 1
 group                   Se type 2
-set group               Pb charge -1.29
-set group               Se charge 1.29
+set group               Pb charge 1.29
+set group               Se charge -1.29
 
 #####################################################
 # Settings
@@ -67,23 +73,23 @@ pair_coeff		        1 1 ${epsPb} ${sigPb} ${rcut}                           # Pb
 pair_coeff		        2 2 ${epsSe} ${sigSe} ${rcut}                           # Se.
 pair_modify             mix arithmetic                                          # Lennard-Berthelot rule.
 kspace_style            pppm 1e-5                                              
-kspace_modify 		slab nozforce
+kspace_modify 		    slab nozforce
 
 neighbor                1.0 bin
 neigh_modify            delay 0 every 1 check yes
 #####################################################
-# NVT run
+# NPT or NVT run
 
 ## Nose-Hoover simulations.
 ## Initial velocities from Maxwell-Boltzmann distribution.
-velocity     		all create ${mytemp} ${seed} dist gaussian
-fix                     thermoNose all npt temp ${mytemp} ${mytemp} ${Tdamping} x ${mypress} ${mypress} 10000 y ${mypress} ${mypress} 10000 #couple xy
-#fix			thermoNose all nvt temp ${mytemp} ${mytemp} ${Tdamping}
+velocity     		    all create ${mytemp} ${seed} dist gaussian
+fix                     thermoNose all npt temp ${mytemp} ${mytemp} ${Tdamping} x ${mypress} ${mypress} ${Pdamping} y ${mypress} ${mypress} ${Pdamping} # NPT Simulations.
+#fix			        thermoNose all nvt temp ${mytemp} ${mytemp} ${Tdamping}                                                                         # NVT Simulations.
 
-set group all vz 0.0
-fix planarForce all setforce NULL NULL 0.0
+set group               all vz 0.0
+fix                     planarForce all setforce NULL NULL 0.0
 
-print 			'SETTING NVT RUN...'
+print 			        'SETTING RUN...'
 
 #####################################################
 # Observables.
@@ -108,16 +114,16 @@ dump                    conf all custom ${trajdump} RUN/${simname}_* id type q x
 dump_modify             conf format line "%d %d %.2f %.6f %.6f %.6f"                    # Format.
 dump_modify             conf pbc yes                                                    # Positions inside of the box.
 dump_modify             conf sort id                                                    # Sort the list with respect to id.
-dump_modify		conf pad 10
+dump_modify		        conf pad 10
 
 restart                 ${trestart} Restart/${simname}.*.restart
 
-run		                  ${tnvt}
+run		                ${tnvt}
 
-print 			            'NVT RUN COMPLETE'
+print 			        'RUN COMPLETE'
 
 #####################################################
 # WRITE FINAL INFORMATIONS
 
-write_data      	      data.${simname}
-write_restart		        Restart/restart.${simname}
+write_data      	    data.${simname}
+write_restart		    Restart/restart.${simname}
