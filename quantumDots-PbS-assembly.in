@@ -1,0 +1,133 @@
+# Nanocrystals.
+
+## Parameters taken from: Z. Fan, L-C. Lin, W. Buijs, T.J.H. Vlugt, M.A. van Huis
+## Nature Communications, doi:10.1038/ncomms11503
+
+# REQUIRES:
+# A folder named "RUN" to store configurations.
+# A folder named "Restart" to store the restart binary files.
+# An input file to start the simulation (default name: start.data)
+
+################################################################################
+# Variables.
+## MATH.
+variable sr_two         equal   $(2^(1/6.))     		               # Parameter is used in cutoffs.
+
+## NUMBER OF STEPS OF RUNS.
+variable tnvt		equal 	500000				               # NVT run steps.
+variable tstep          equal   2       			               # Integration time step [femtoseconds].
+
+## INFORMATION PRINTING PERIODS.
+variable thermodump     equal   1e3				               # Thermo info dump period.
+variable trajdump       equal   5000		    		               # Config info dump period.
+variable trestart       equal   50000		    		               # Restart configuration saving period.
+
+
+## THERMODYNAMIC PARAMETERS.
+variable mytemp         index 	300                                            # Temperature [Kelvin].
+variable mypress	index   30.0                                            # Pressure [Bars].
+variable Tdamping	equal   100*${tstep}
+variable Pdamping       equal   10000
+
+## SEEDS
+variable seed		index	11573				               # Seed for creation of velocities.
+
+## STRINGS
+variable fname 		string 	start.data
+variable thermofile     string  thermo.dat				       # Name of the file with thermodynamic infos for npt equilibration phase.
+variable simname 	string 	NanoCrys_${mytemp}			       # Name of this simulation.
+
+################################################################################
+# Initialization
+units                   real
+boundary                p p f
+atom_style              charge
+
+## Starting file.
+read_data      		${fname}
+#read_restart		${fname}
+reset_timestep          0
+
+## Groups
+group                   S  type 1
+group                   Pb type 2
+
+## Masses
+mass			1 32.06
+mass                    2 207.2
+
+## Charges
+set group               S  charge -1.124
+set group               Pb charge 1.124
+
+#####################################################
+# Settings
+
+## Interaction.
+pair_style		hybrid/overlay morse 10 lj/cut/coul/long 12.0 tersoff
+dielectric              1.0
+pair_coeff		* * tersoff PbS.tersoff Pb S
+pair_coeff		1 1 morse 0.50   0.625  7.335 
+pair_coeff		1 2 morse 73.318 2.071  3.030 
+pair_coeff		2 2 morse 3.892  0.470  7.070 
+
+pair_coeff		1 1 lj/cut/coul/long 3.161 0.989
+pair_coeff		1 2 lj/cut/coul/long 4.147 0.822
+pair_coeff		2 2 lj/cut/coul/long 5.441 0.684
+                               
+
+kspace_style            pppm 1e-5                                              
+kspace_modify 		slab nozforce
+
+neighbor                1.0 bin
+neigh_modify            delay 0 every 1 check yes
+#####################################################
+# NPT or NVT run
+
+## Nose-Hoover simulations.
+## Initial velocities from Maxwell-Boltzmann distribution.
+velocity     		all create ${mytemp} ${seed} dist gaussian loop local
+fix                     thermoNose all npt temp ${mytemp} ${mytemp} ${Tdamping} x ${mypress} ${mypress} ${Pdamping} y ${mypress} ${mypress} ${Pdamping} # NPT Simulations.
+#fix			thermoNose all nvt temp ${mytemp} ${mytemp} ${Tdamping}                                                                         # NVT Simulations.
+
+set group               all vz 0.0
+fix                     planarForce all setforce NULL NULL 0.0
+
+print 			'SETTING RUN...'
+
+#####################################################
+# Observables.
+
+## Variables for use in fix print.
+variable step           equal step
+variable temp           equal temp
+variable ke             equal ke
+variable pe             equal pe
+
+thermo_style            custom step ke pe temp press
+#thermo_modify          norm no
+thermo                  ${thermodump}
+
+timestep                ${tstep}
+
+fix                     dummy all print ${thermodump} "${step} ${ke} ${pe} ${temp}" file ${thermofile} screen no title "#1:step 2:ke 3:pe 4:temp"
+
+#####################################################
+# Save information.
+dump                    conf all custom ${trajdump} RUN/${simname}_* id type q x y z
+dump_modify             conf format line "%d %d %.2f %.6f %.6f %.6f"                    # Format.
+dump_modify             conf pbc yes                                                    # Positions inside of the box.
+dump_modify             conf sort id                                                    # Sort the list with respect to id.
+dump_modify		conf pad 10
+
+restart                 ${trestart} Restart/${simname}.*.restart
+
+run		        ${tnvt}
+
+print 			'RUN COMPLETE'
+
+#####################################################
+# WRITE FINAL INFORMATIONS
+
+write_data      	data.${simname}
+write_restart		Restart/restart.${simname}
